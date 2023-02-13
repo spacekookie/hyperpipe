@@ -2,6 +2,7 @@ use hyperpipe::HyperPipe;
 use std::{
     io::{self, Read},
     path::Path,
+    time::Duration,
 };
 
 fn main() {

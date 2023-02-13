@@ -2,8 +2,7 @@ use rand::random;
 use serde::{Deserialize, Serialize};
 use std::fs::{create_dir_all, read_dir, remove_file, rename, File, OpenOptions};
 use std::{
-    env::args,
-    io::{stderr, Read, Write},
+    io::{Read, Write},
     path::{Path, PathBuf},
     time::SystemTime,
 };
@@ -203,4 +202,18 @@ impl Manifest {
         let buf = serde_json::to_string(self).ok()?;
         util_atomic_write(&manifest_path(root), buf.into_bytes())
     }
+}
+
+#[test]
+fn ping_pong() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let pipe_path = temp_dir.into_path();
+
+    let mut p1 = HyperPipe::new(pipe_path.as_path()).unwrap();
+    let v1 = vec![1, 2, 3, 4, 5, 6];
+    p1.push(v1.clone()).unwrap();
+
+    let mut p2 = HyperPipe::new(pipe_path.as_path()).unwrap();
+    let v2 = p2.pull().unwrap();
+    assert_eq!(v1, v2);
 }
