@@ -1,0 +1,11 @@
+[package]
+name = "async-hyperpipe"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+hyperpipe = { path = ".." }
+async-std = { version = "1.0", features = [ "attributes" ] }
+
+[dev-dependencies]
+tempfile = "3.0"
