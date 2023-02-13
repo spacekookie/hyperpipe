@@ -29,6 +29,10 @@ impl HyperPipe {
         Self::initialise(root)
     }
 
+    pub fn root_path(&self) -> PathBuf {
+        self.root.clone()
+    }
+
     fn initialise(root: PathBuf) -> Option<Self> {
         let mut manifest = match Manifest::load(&root) {
             Some(m) => m,
