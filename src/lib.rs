@@ -1,8 +1,9 @@
 use rand::random;
 use serde::{Deserialize, Serialize};
-use std::fs::{create_dir_all, read_dir, remove_file, File, OpenOptions};
+use std::fs::{create_dir_all, read_dir, remove_file, rename, File, OpenOptions};
 use std::{
-    io::{Read, Write},
+    env::args,
+    io::{stderr, Read, Write},
     path::{Path, PathBuf},
     time::SystemTime,
 };
@@ -70,8 +71,8 @@ impl HyperPipe {
         let latest_manifest = Manifest::load(&self.root)?;
 
         // eprintln!(
-        //     "Disk: {:?} | Memory: {:?}",
-        //     self.manifest.latest, latest_manifest.latest
+        //     "In Memory: {:#?}, Loaded: {:#?}",
+        //     self.manifest, latest_manifest
         // );
 
         // If the manifest timestamp is None (i.e. we are pulling for
@@ -79,6 +80,15 @@ impl HyperPipe {
         // older than the newly read timestamp (meaning something was
         // inserted)
         if self.manifest.latest.is_none() || self.manifest.latest < latest_manifest.latest {
+            // eprintln!(
+            //     "{}",
+            //     if self.manifest.latest.is_none() {
+            //         "in-memory latest is None"
+            //     } else {
+            //         "bigger (Newer?) timestamp read from manifest"
+            //     }
+            // );
+
             // If we are loading for the first time we want to read ALL
             let latest = self.manifest.latest.unwrap_or(SystemTime::UNIX_EPOCH);
 
@@ -92,12 +102,10 @@ impl HyperPipe {
                     }
                     _ => None,
                 })
-                // .map(|x| {
-                //     eprintln!("Looking at: {:?}", x);
-                //     x
-                // })
                 .filter(|x| x.metadata().unwrap().created().unwrap() > latest)
                 .collect();
+
+            // eprintln!("Found {} data-files!", vec.len());
 
             // Return the oldest of the entries
             vec.sort_by(|x, y| {
@@ -109,6 +117,8 @@ impl HyperPipe {
                     .unwrap()
             });
 
+            // eprintln!("Sorted by time: {:?}", vec);
+
             // If no new data has been inserted we can return None
             if vec.is_empty() {
                 return None;
@@ -117,6 +127,7 @@ impl HyperPipe {
             // Otherwise grab the oldest (?) entry from the list and return it
             let entry = vec.remove(0);
             let new_latest = entry.metadata().unwrap().created().unwrap();
+            // eprintln!("New latest timestamp: {:?}", new_latest);
             self.manifest.latest = Some(new_latest);
 
             let mut buf = vec![];
@@ -130,7 +141,7 @@ impl HyperPipe {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Manifest {
     latest: Option<SystemTime>,
 }
@@ -142,6 +153,20 @@ fn manifest_path(root: &PathBuf) -> PathBuf {
 fn generate_data_id() -> String {
     let id: usize = random();
     format!("{:x?}.bin", id)
+}
+
+/// Write operations are not atomic, meaning that a reader can end up
+/// with a partial view of a given file.  To perform an atomic write
+/// we first write into a ".swap" file, and then rename it, which is
+/// an atomic operation.
+fn util_atomic_write(manifest_path: &PathBuf, content: Vec<u8>) -> Option<()> {
+    let mut swap_path = manifest_path.clone();
+    swap_path.set_extension("swap");
+
+    let mut swap = File::create(&swap_path).unwrap();
+    swap.write_all(content.as_slice()).unwrap();
+    rename(swap_path, manifest_path).unwrap();
+    Some(())
 }
 
 impl Manifest {
@@ -173,17 +198,9 @@ impl Manifest {
         }
     }
 
-    fn update(&mut self, root: &PathBuf, latest: SystemTime) -> Option<()> {
-        self.latest = Some(latest);
-        let mut f = OpenOptions::new()
-            .write(true)
-            .create(false)
-            .truncate(true)
-            .open(manifest_path(root))
-            .ok()?;
-
+    fn update(&mut self, root: &PathBuf, new_latest: SystemTime) -> Option<()> {
+        self.latest = Some(new_latest);
         let buf = serde_json::to_string(self).ok()?;
-        f.write_all(buf.as_bytes()).ok()?;
-        Some(())
+        util_atomic_write(&manifest_path(root), buf.into_bytes())
     }
 }

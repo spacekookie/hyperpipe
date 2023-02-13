@@ -12,7 +12,7 @@ fn main() {
     loop {
         match pipe.pull() {
             Some(data) => io::stdout().write_all(data.as_slice()).unwrap(),
-            None => thread::yield_now(),
+            None => thread::sleep_ms(200), //thread::yield_now(),
         }
     }
 }
