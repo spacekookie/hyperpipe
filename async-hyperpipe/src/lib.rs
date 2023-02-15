@@ -40,16 +40,18 @@ impl Future for AsyncHyperPipe {
     }
 }
 
-#[async_std::test]
-async fn in_out() {
-    let temp_dir = tempfile::tempdir().unwrap();
-    let pipe_path = temp_dir.into_path();
+#[test]
+fn in_out() {
+    smol::block_on(async move {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let pipe_path = temp_dir.into_path();
 
-    let mut p1 = AsyncHyperPipe::new(pipe_path.as_path());
-    let v1 = vec![1, 2, 3, 4, 5, 6];
-    p1.push(v1.clone());
+        let mut p1 = AsyncHyperPipe::new(pipe_path.as_path());
+        let v1 = vec![1, 2, 3, 4, 5, 6];
+        p1.push(v1.clone());
 
-    let mut p2 = AsyncHyperPipe::new(pipe_path.as_path());
-    let v2 = p2.pull().await;
-    assert_eq!(v1, v2);
+        let mut p2 = AsyncHyperPipe::new(pipe_path.as_path());
+        let v2 = p2.pull().await;
+        assert_eq!(v1, v2);
+    })
 }
