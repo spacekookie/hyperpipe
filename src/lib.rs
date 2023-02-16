@@ -19,17 +19,18 @@ use std::{
 pub struct HyperPipe {
     root: PathBuf,
     manifest: Manifest,
+    lag_ms: u64,
 }
 
 impl HyperPipe {
     /// Create a new instance of Hyperpipe at a particular location
-    pub fn new<'p, P: Into<&'p Path>>(path: P) -> Option<Self> {
+    pub fn new<'p, P: Into<&'p Path>>(path: P, lag_ms: u64) -> Option<Self> {
         let root = path.into().to_path_buf();
         create_dir_all(&root).ok()?;
-        Self::initialise(root)
+        Self::initialise(root, lag_ms)
     }
 
-    fn initialise(root: PathBuf) -> Option<Self> {
+    fn initialise(root: PathBuf, lag_ms: u64) -> Option<Self> {
         let mut manifest = match Manifest::load(&root) {
             Some(m) => m,
             None => {
@@ -46,7 +47,11 @@ impl HyperPipe {
         //
         // This should probably not be here but eeh.
         manifest.latest = None;
-        Some(Self { root, manifest })
+        Some(Self {
+            root,
+            manifest,
+            lag_ms,
+        })
     }
 
     /// Push some data into the pipe
@@ -57,6 +62,7 @@ impl HyperPipe {
         // Write the data file
         let data_id = generate_data_id();
         let data_path = self.root.join(&data_id);
+        std::thread::sleep(std::time::Duration::from_millis(self.lag_ms));
         let mut data_file = File::create(&data_path).ok()?;
         data_file.write_all(data.as_slice()).ok()?;
 
@@ -132,6 +138,8 @@ impl HyperPipe {
             let mut buf = vec![];
             let mut f = File::open(entry.path()).ok()?;
             f.read_to_end(&mut buf).ok()?;
+            // Sleep for duration of lag_ms to ensure that the async is fun
+            std::thread::sleep(std::time::Duration::from_millis(self.lag_ms));
             remove_file(entry.path()).ok()?;
             return Some(buf);
         }
@@ -209,11 +217,11 @@ fn ping_pong() {
     let temp_dir = tempfile::tempdir().unwrap();
     let pipe_path = temp_dir.into_path();
 
-    let mut p1 = HyperPipe::new(pipe_path.as_path()).unwrap();
+    let mut p1 = HyperPipe::new(pipe_path.as_path(), 0).unwrap();
     let v1 = vec![1, 2, 3, 4, 5, 6];
     p1.push(v1.clone()).unwrap();
 
-    let mut p2 = HyperPipe::new(pipe_path.as_path()).unwrap();
+    let mut p2 = HyperPipe::new(pipe_path.as_path(), 0).unwrap();
     let v2 = p2.pull().unwrap();
     assert_eq!(v1, v2);
 }
